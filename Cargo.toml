@@ -1,0 +1,27 @@
+[package]
+name = "rust-single"
+version = "25.8.4"
+authors = ["lingting"]
+homepage = "https://github.com/lingting-projects/rust-single"
+repository = "https://github.com/lingting-projects/rust-single"
+categories = ["command-line-utilities"]
+license = "MIT"
+edition = "2024"
+rust-version = "1.88.0"
+description = "rust application single process"
+readme = "README.md"
+
+[features]
+ipc = []
+
+[dependencies]
+log = "0.4"
+thiserror = "2.0"
+
+[target.'cfg(windows)'.dependencies]
+widestring = "0.4.3"
+winapi = { version = "0.3", features = ["synchapi", "winnt", "errhandlingapi", "winerror", "handleapi"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+nix = "0.23.0"
