@@ -17,11 +17,4 @@ ipc = []
 [dependencies]
 log = "0.4"
 thiserror = "2.0"
-
-[target.'cfg(windows)'.dependencies]
-widestring = "0.4.3"
-winapi = { version = "0.3", features = ["synchapi", "winnt", "errhandlingapi", "winerror", "handleapi"] }
-
-[target.'cfg(unix)'.dependencies]
-libc = "0.2"
-nix = "0.23.0"
+fs2 = "0.4.3"
