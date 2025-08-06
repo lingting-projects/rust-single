@@ -1,9 +1,15 @@
+mod core;
+#[cfg(feature = "ipc")]
+mod ipc;
+
+use crate::core::{try_unique, write};
 use fs2::FileExt;
 use std::error::Error;
 use std::fs::{create_dir_all, File, OpenOptions};
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process;
+use std::sync::Arc;
 
 #[derive(thiserror::Error, Debug)]
 pub enum SingleError {
@@ -19,60 +25,28 @@ pub struct Single {
     pub info: String,
     pub path: String,
     pub path_info: String,
+    #[cfg(feature = "ipc")]
+    pub path_ipc: String,
+    #[cfg(feature = "ipc")]
+    on_wake: Option<Arc<Box<dyn Fn() + Send + Sync>>>,
     file: Option<File>,
 }
 
-fn try_unique<P: AsRef<Path>>(p: P) -> AnyResult<File> {
-    let mut options = OpenOptions::new();
-    options.write(true).create(true);
-
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::fs::OpenOptionsExt;
-        options
-            .share_mode(0x0)
-            .attributes(0)
-            .security_qos_flags(0x0)
-            .custom_flags(0x0)
-            .access_mode(0xC0000000);
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o444);
-    }
-
-    let file = options.open(p)?;
-    FileExt::lock_exclusive(&file)?;
-    Ok(file)
-}
-
-fn write(path: &str, pid: u32, info: &str) -> AnyResult<()> {
-    let mut file = File::create(path)?;
-    let content = format!("{}\n{}", pid, info);
-
-    // 写入PID和信息
-    file.set_len(0)?; // 截断文件
-    file.write_all(content.as_bytes())?;
-    file.flush()?;
-    file.sync_all()?;
-    Ok(())
-}
-
 impl Single {
-    pub fn create<P: AsRef<Path>>(p: P, info: &str) -> AnyResult<Single> {
-        let path_lock = p.as_ref();
+    fn create(build: SingleBuild) -> AnyResult<Single> {
+        let path_lock = Path::new(&build.path);
         if let Some(parent) = path_lock.parent() {
             create_dir_all(parent)?;
         }
-        let p_str = path_lock.to_str().expect("get path err").to_string();
-        let path_info = format!("{}.info", p_str);
+        let path_info = format!("{}.info", build.path);
+        let path_ipc = format!("{}.ipc", build.path);
 
         match try_unique(path_lock) {
             Ok(lock) => {
                 let pid = process::id();
+                let context = format!("{}\\n{}", pid, &build.info);
 
-                match write(&path_info, pid, info) {
+                match write(&path_info, context) {
                     Ok(_) => {}
                     Err(e) => {
                         log::error!("write pid and info to {} err! {}", path_info, e);
@@ -80,14 +54,25 @@ impl Single {
                     }
                 }
 
-                return Ok(Single {
+                let mut single = Single {
                     is_single: true,
                     pid: Some(pid),
-                    info: info.to_string(),
-                    path: p_str,
+                    info: build.info,
+                    path: build.path,
                     path_info,
+                    #[cfg(feature = "ipc")]
+                    path_ipc,
+                    #[cfg(feature = "ipc")]
+                    on_wake: build.on_wake,
                     file: Some(lock),
-                });
+                };
+
+                #[cfg(feature = "ipc")]
+                {
+                    single = core::ipc_create(single)?;
+                }
+
+                return Ok(single);
             }
             Err(e) => {
                 log::error!("获取独占锁异常! {}", e)
@@ -102,14 +87,28 @@ impl Single {
         file.read_to_string(&mut content)?;
         let (pid_str, info) = content.split_once('\n').unwrap_or(("0", &content));
         let pid = pid_str.parse::<u32>().ok();
-        Ok(Single {
+
+        let mut single = Single {
             is_single: false,
             pid,
             info: info.to_string(),
-            path: p_str,
+            path: build.path,
             path_info,
+            #[cfg(feature = "ipc")]
+            path_ipc,
+            #[cfg(feature = "ipc")]
+            on_wake: None,
             file: None,
-        })
+        };
+
+        #[cfg(feature = "ipc")]
+        {
+            if build.on_wake.is_some() {
+                single = core::ipc_wake(single)?;
+            }
+        }
+
+        Ok(single)
     }
 }
 
@@ -120,5 +119,40 @@ impl Drop for Single {
             let _ = FileExt::unlock(&file);
             drop(file);
         }
+    }
+}
+
+#[derive(Default)]
+pub struct SingleBuild {
+    pub info: String,
+    pub path: String,
+    #[cfg(feature = "ipc")]
+    pub on_wake: Option<Arc<Box<dyn Fn() + Send + Sync>>>,
+}
+
+impl SingleBuild {
+    pub fn new<P: AsRef<Path>>(path: P) -> Self {
+        let mut s = SingleBuild::default();
+        s.path = path
+            .as_ref()
+            .to_str()
+            .expect("failed get single path")
+            .to_string();
+        s
+    }
+
+    pub fn with_info(mut self, info: String) -> Self {
+        self.info = info;
+        self
+    }
+
+    #[cfg(feature = "ipc")]
+    pub fn with_ipc<F: Fn() + Send + Sync + 'static>(mut self, f: F) -> Self {
+        self.on_wake = Some(Arc::new(Box::new(f)));
+        self
+    }
+
+    pub fn build(self) -> AnyResult<Single> {
+        Single::create(self)
     }
 }

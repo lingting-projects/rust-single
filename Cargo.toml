@@ -12,9 +12,10 @@ description = "rust application single process"
 readme = "README.md"
 
 [features]
-ipc = []
+ipc = ["interprocess"]
 
 [dependencies]
 log = "0.4"
 thiserror = "2.0"
-fs2 = "0.4.3"
+fs2 = "0.4"
+interprocess = { version = "2.2", optional = true }
