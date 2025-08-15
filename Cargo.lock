@@ -69,7 +69,7 @@ checksum = "d3edd4d5d42c92f0a659926464d4cce56b562761267ecf0f469d85b7de384175"
 
 [[package]]
 name = "rust-single"
-version = "25.8.40"
+version = "25.8.41"
 dependencies = [
  "fs2",
  "interprocess",
