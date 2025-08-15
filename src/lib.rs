@@ -17,7 +17,7 @@ pub enum SingleError {
     SingleWrite,
 }
 
-type AnyResult<T> = Result<T, Box<dyn Error>>;
+pub type AnyResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 pub struct Single {
     pub is_single: bool,
