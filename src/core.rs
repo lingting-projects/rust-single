@@ -64,8 +64,9 @@ pub fn ipc_create(single: Single) -> AnyResult<Single> {
     thread::spawn(move || {
         loop {
             match panic::catch_unwind(|| server.next()) {
-                Ok(Ok(_)) => {
-                    _f();
+                Ok(Ok(mut stream)) => {
+                    let r = stream.read();
+                    _f(r);
                 }
                 Ok(Err(e)) => {
                     log::error!("ipc server read err! {}", e)
@@ -77,13 +78,5 @@ pub fn ipc_create(single: Single) -> AnyResult<Single> {
         }
     });
 
-    Ok(single)
-}
-
-#[cfg(feature = "ipc")]
-pub fn ipc_wake(single: Single) -> AnyResult<Single> {
-    use crate::ipc::*;
-    let mut stream = IpcStream::new(&single.path_ipc)?;
-    stream.write("")?;
     Ok(single)
 }

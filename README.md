@@ -11,6 +11,8 @@ fn create_single(path: PathBuf, info: &str) -> AnyResult<Option<Single>> {
     if !single.is_single {
         log::error!("存在已启动进程: {}", single.pid.unwrap_or(0));
         log::error!("已启动进程info: {}", single.info);
+        // 唤醒已存在进程
+        // single.wake("")?;
         Err(Box::new(BizError::SingleRunning))
     } else {
         Ok(Some(single))

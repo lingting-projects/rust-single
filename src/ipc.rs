@@ -9,14 +9,14 @@ use interprocess::{
 use std::io::{Read, Write};
 
 #[cfg(target_os = "windows")]
-const prefix: &str = r"\\.\pipe\";
+const PREFIX: &str = r"\\.\pipe\";
 
 #[cfg(target_os = "windows")]
 fn to_name(path: &str) -> AnyResult<Name> {
-    let p = if path.starts_with(prefix) {
+    let p = if path.starts_with(PREFIX) {
         path.to_string()
     } else {
-        format!("{}{}", prefix, path)
+        format!("{}{}", PREFIX, path)
     };
     let name = p.to_fs_name::<GenericFilePath>()?;
     Ok(name)
@@ -41,6 +41,10 @@ impl IpcStream {
 
     pub fn write(&mut self, content: &str) -> AnyResult<()> {
         let bytes = content.as_bytes();
+        self.write_bytes(bytes)
+    }
+
+    pub fn write_bytes(&mut self, bytes: &[u8]) -> AnyResult<()> {
         self.inner.write(bytes)?;
         Ok(())
     }
@@ -59,9 +63,7 @@ pub struct IpcServer {
 impl IpcServer {
     pub fn new(path: &str) -> AnyResult<Self> {
         let name = to_name(path)?;
-        let listener = ListenerOptions::new()
-            .name(name)
-            .create_sync()?;
+        let listener = ListenerOptions::new().name(name).create_sync()?;
 
         Ok(Self { inner: listener })
     }

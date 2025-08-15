@@ -6,7 +6,7 @@ use crate::core::{try_unique, write};
 use fs2::FileExt;
 use std::error::Error;
 use std::fs::{create_dir_all, File, OpenOptions};
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::Path;
 use std::process;
 use std::sync::Arc;
@@ -28,7 +28,7 @@ pub struct Single {
     #[cfg(feature = "ipc")]
     pub path_ipc: String,
     #[cfg(feature = "ipc")]
-    on_wake: Option<Arc<Box<dyn Fn() + Send + Sync>>>,
+    on_wake: Option<Arc<Box<dyn Fn(AnyResult<Vec<u8>>) + Send + Sync>>>,
     file: Option<File>,
 }
 
@@ -88,7 +88,7 @@ impl Single {
         let (pid_str, info) = content.split_once('\n').unwrap_or(("0", &content));
         let pid = pid_str.parse::<u32>().ok();
 
-        let mut single = Single {
+        let single = Single {
             is_single: false,
             pid,
             info: info.to_string(),
@@ -101,14 +101,20 @@ impl Single {
             file: None,
         };
 
-        #[cfg(feature = "ipc")]
-        {
-            if build.on_wake.is_some() {
-                single = core::ipc_wake(single)?;
-            }
-        }
-
         Ok(single)
+    }
+
+    #[cfg(feature = "ipc")]
+    pub fn wake(&self, content: &str) -> AnyResult<()> {
+        let bytes = content.as_bytes();
+        self.wake_bytes(bytes)
+    }
+
+    #[cfg(feature = "ipc")]
+    pub fn wake_bytes(&self, bytes: &[u8]) -> AnyResult<()> {
+        use crate::ipc::IpcStream;
+        let mut stream = IpcStream::new(&self.path_ipc)?;
+        stream.write_bytes(bytes)
     }
 }
 
@@ -127,7 +133,7 @@ pub struct SingleBuild {
     pub info: String,
     pub path: String,
     #[cfg(feature = "ipc")]
-    pub on_wake: Option<Arc<Box<dyn Fn() + Send + Sync>>>,
+    pub on_wake: Option<Arc<Box<dyn Fn(AnyResult<Vec<u8>>) + Send + Sync>>>,
 }
 
 impl SingleBuild {
@@ -147,7 +153,7 @@ impl SingleBuild {
     }
 
     #[cfg(feature = "ipc")]
-    pub fn with_ipc<F: Fn() + Send + Sync + 'static>(mut self, f: F) -> Self {
+    pub fn with_ipc<F: Fn(AnyResult<Vec<u8>>) + Send + Sync + 'static>(mut self, f: F) -> Self {
         self.on_wake = Some(Arc::new(Box::new(f)));
         self
     }
